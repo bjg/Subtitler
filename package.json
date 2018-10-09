@@ -29,10 +29,10 @@
     "moment": "^2.18.1",
     "moment-duration-format": "^1.3.0",
     "optional": "^0.1.4",
-    "subtitles-parser": "^0.0.2",
-    "watson-developer-cloud": "^2.38.0",
-    "sentence-tokenizer": "^0.0.8",
     "request": "^2.81.0",
-    "trim": "^0.0.1"
+    "sentence-tokenizer": "^0.0.8",
+    "subtitles-parser": "^0.0.2",
+    "trim": "^0.0.1",
+    "watson-developer-cloud": "^3.7.0"
   }
 }

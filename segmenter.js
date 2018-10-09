@@ -16,86 +16,85 @@
  * limitations under the License.
  */
 
-var chalk = require('chalk');
-var clear = require('clear');
-var CLI = require('clui');
-var figlet = require('figlet');
-var inquirer = require('inquirer');
+var chalk = require("chalk");
+var clear = require("clear");
+var CLI = require("clui");
+var figlet = require("figlet");
+var inquirer = require("inquirer");
 var Spinner = CLI.Spinner;
-var _ = require('lodash');
-var files = require('./lib/files');
-var request = require('request');
-var moment = require('moment');
+var _ = require("lodash");
+var files = require("./lib/files");
+var request = require("request");
+var moment = require("moment");
 require("moment-duration-format");
 
-
 function processSubtitles(callback) {
+    var argv = require("minimist")(process.argv.slice(2));
 
-    var argv = require('minimist')(process.argv.slice(2));
-
-    var questions = [{
-        name: 'filename',
-        type: 'input',
-        message: 'Enter the file name of the speech events file:',
-        default: argv._[0] || null,
-        validate: function (value) {
-            if (value.length) {
-                return true;
-            } else {
-                return 'Please enter the file name of the speech events';
+    var questions = [
+        {
+            name: "filename",
+            type: "input",
+            message: "Enter the file name of the speech events file:",
+            default: argv._[0] || null,
+            validate: function(value) {
+                if (value.length) {
+                    return true;
+                } else {
+                    return "Please enter the file name of the speech events";
+                }
+            }
+        },
+        {
+            name: "source",
+            type: "input",
+            message: "Enter the BCP source language code or customization id:",
+            default: argv._[1] || "en",
+            validate: function(value) {
+                if (value.length) {
+                    return true;
+                } else {
+                    return "Enter the BCP source language code or customization id";
+                }
+            }
+        },
+        {
+            name: "service",
+            type: "input",
+            message:
+                "Enter the id of segmentation service: \n" +
+                "0: http://bark.phon.ioc.ee/punctuator \n" +
+                "1: https://punctuationservice.mybluemix.net \n",
+            default: argv._[2] || "0",
+            validate: function(value) {
+                value = value + "";
+                if (value.length) {
+                    return true;
+                } else {
+                    return "Enter the id of segmentation service";
+                }
             }
         }
-    },
-    {
-        name: 'source',
-        type: 'input',
-        message: 'Enter the BCP source language code or customization id:',
-        default: argv._[1] || 'en',
-        validate: function (value) {
-            if (value.length) {
-                return true;
-            } else {
-                return 'Enter the BCP source language code or customization id';
-            }
-        },
-    },
-    {
-        name: 'service',
-        type: 'input',
-        message: 'Enter the id of segmentation service: \n'
-        		+ '0: http://bark.phon.ioc.ee/punctuator \n'
-        		+ '1: https://punctuationservice.mybluemix.net \n',
-        default: argv._[2] || '0',
-        validate: function (value) {
-        	value = value + '';
-            if (value.length) {
-                return true;
-            } else {
-                return 'Enter the id of segmentation service';
-            }
-        },
-    }];
+    ];
 
-    inquirer.prompt(questions).then(function (answers) {
-        var status = new Spinner(chalk.green('Segmenting subtitles...'));
-        var Tokenizer = require('sentence-tokenizer');
-        var parser = require('subtitles-parser');
+    inquirer.prompt(questions).then(function(answers) {
+        var status = new Spinner(chalk.green("Segmenting subtitles..."));
+        var parser = require("subtitles-parser");
         var speechEvents = [];
         status.start();
 
-
-        if(answers.source != 'en') {
+        if (answers.source != "en") {
             status.stop();
             console.log("Only English segmentation is currently supported");
-            return callback({'message': 'Unsuported language'});
+            return callback({ message: "Unsuported language" });
         }
-        
-        if(answers.service != 0 && answers.service != 1) {
+
+        if (answers.service != 0 && answers.service != 1) {
             status.stop();
             console.log("Need input proper segmentation service id");
-            return callback({'message': 'Unsuported segmentation service id'});
+            return callback({ message: "Unsuported segmentation service id" });
         }
-        
+
         // Read all the raw speech events
         try {
             speechEvents = JSON.parse(files.read(answers.filename));
@@ -105,38 +104,51 @@ function processSubtitles(callback) {
             return callback(err);
         }
 
-        generateSegments(speechEvents, answers.service, function (err, data) {
+        generateSegments(speechEvents, answers.service, function(err, data) {
             if (err) {
                 console.log(err.message);
                 status.stop();
                 return callback(err);
             } else {
-                var tokenizer = new Tokenizer();
-                tokenizer.setEntry(data);
-                var sentences = tokenizer.getSentences();
+                var sentences = sentenceSplit(data, 65);
                 var wordTimes = flatten(speechEvents);
 
-                var subs = formatSubtitles(tokenizer.getSentences(), wordTimes);
+                var subs = formatSubtitles(sentences, wordTimes);
 
                 var srtSubs = parser.toSrt(subs);
-                files.write(files.name(answers.filename) + '.srt', srtSubs);
+                files.write(files.name(answers.filename) + ".srt", srtSubs);
 
                 status.stop();
                 return callback(null);
             }
         });
-
     });
 }
 
-
-function countWords(s) {
-    s = s.replace(/\n/g, ' '); // newlines to space
-    s = s.replace(/(^\s*)|(\s*$)/gi, ''); // remove spaces from start + end
-    s = s.replace(/[ ]{2,}/gi, ' '); // 2 or more spaces to 1
-    return s.split(' ').length;
+function sentenceSplit(data, maxWidth) {
+    let sentence = "";
+    const all = data.split(/\s+/).reduce((acc, word) => {
+        if (sentence.length + word.length <= maxWidth) {
+            sentence += " " + word;
+        } else {
+            // This sentence is done. Next one starts with the current word
+            acc.push(sentence.trim());
+            sentence = word;
+        }
+        return acc;
+    }, []);
+    // Add the last sentence
+    all.push(sentence.trim());
+    return all;
 }
 
+function countWords(s) {
+    s = s.replace(/\n/g, " "); // newlines to space
+    s = s.replace(/\t/g, " "); // newlines to space
+    s = s.replace(/(^\s*)|(\s*$)/gi, ""); // remove spaces from start + end
+    s = s.replace(/[ ]{2,}/gi, " "); // 2 or more spaces to 1
+    return s.split(" ").length;
+}
 
 function flatten(events) {
     var words = [];
@@ -148,7 +160,6 @@ function flatten(events) {
     return words;
 }
 
-
 function formatSubtitles(segments, wordTimes) {
     var srtJSON = [];
     var lastTimeIndex = 0;
@@ -158,21 +169,31 @@ function formatSubtitles(segments, wordTimes) {
     text segement should be displayed by looking up the times in the the wordTimes array 
     */
     for (var i = 0; i < segments.length; ++i) {
-
         var subtitle = {
-            'id': '0',
-            'startTime': '',
-            'endTime': '',
-            'text': ''
+            id: "0",
+            startTime: "",
+            endTime: "",
+            text: ""
         };
 
         subtitle.id = String(i + 1);
 
         // Save the subtile text and remove any dashes
-        subtitle.text = segments[i].replace(/-/, '');;
+        subtitle.text = segments[i].replace(/-/, "");
 
-
-        subtitle.startTime = moment.duration(wordTimes[lastTimeIndex][1], 'seconds').format('hh:mm:ss,SSS', {
+        let startTime;
+        for (;;) {
+            // XXX Hack alert. Sometimes the lastTimeIndex gets out of sync so this
+            // kludge just finds right one
+            try {
+                startTime = wordTimes[lastTimeIndex][1];
+            } catch {
+                lastTimeIndex--;
+                continue;
+            }
+            break;
+        }
+        subtitle.startTime = moment.duration(startTime, "seconds").format("hh:mm:ss,SSS", {
             trim: false
         });
 
@@ -180,7 +201,19 @@ function formatSubtitles(segments, wordTimes) {
         lastTimeIndex = lastTimeIndex + countWords(subtitle.text);
 
         // Get the end time for when the last word is spoken in the segment
-        subtitle.endTime = moment.duration(wordTimes[lastTimeIndex - 1][2], 'seconds').format('hh:mm:ss,SSS', {
+        let endTime;
+        for (;;) {
+            // XXX Hack alert. Sometimes the lastTimeIndex gets out of sync so this
+            // kludge just finds right one
+            try {
+                endTime = wordTimes[lastTimeIndex - 1][2];
+            } catch {
+                lastTimeIndex--;
+                continue;
+            }
+            break;
+        }
+        subtitle.endTime = moment.duration(endTime, "seconds").format("hh:mm:ss,SSS", {
             trim: false
         });
 
@@ -189,47 +222,49 @@ function formatSubtitles(segments, wordTimes) {
     return srtJSON;
 }
 
-
 function generateSegments(speechEvents, serviceId, callback) {
-    var srt = '';
-    var subtitles = '';
-    var transcript = '';
-    var seg_services = ['http://bark.phon.ioc.ee/punctuator', 'https://punctuationservice.mybluemix.net/api/punctext']; 	
+    var srt = "";
+    var subtitles = "";
+    var transcript = "";
+    var seg_services = ["http://bark.phon.ioc.ee/punctuator", "https://punctuationservice.mybluemix.net/api/punctext"];
 
     for (var i = 0; i < speechEvents.length; ++i) {
-        if (transcript === '') {
+        if (transcript === "") {
             transcript = speechEvents[i].text;
         } else {
             transcript = transcript + speechEvents[i].text;
         }
     }
 
-    // Call the web service to create segments from the raw text strings 
-    request.post(seg_services[serviceId], {
-        form: {
-            text: transcript
+    // Call the web service to create segments from the raw text strings
+    request.post(
+        seg_services[serviceId],
+        {
+            form: {
+                text: transcript
+            }
+        },
+        function(err, res) {
+            if (err) {
+                return callback(err);
+            }
+            {
+                return callback(null, res.body);
+            }
         }
-    }, function (err, res) {
-        if (err) {
-            return callback(err);
-        } {
-            return callback(null, res.body);
-        }
-    });
+    );
 }
-
 
 clear();
 console.log(
     chalk.yellow(
-        figlet.textSync('Segmented Subtitle Generator', {
-            horizontalLayout: 'full'
+        figlet.textSync("Segmented Subtitle Generator", {
+            horizontalLayout: "full"
         })
     )
 );
 
-
-processSubtitles(function (err, rawText) {
+processSubtitles(function(err, rawText) {
     if (err) {
         console.log("Failed to segment subtitles");
     } else {
