@@ -14,7 +14,7 @@ You must also establish an [IBM Bluemix](https://console.bluemix.net/registratio
 Download or clone this repository and then install all packages.
 
 ```sh
-$ git clone https://github.com/steveatkin/Subtitler
+$ git clone https://github.com/bjg/Subtitler
 ```
 
 ```sh
